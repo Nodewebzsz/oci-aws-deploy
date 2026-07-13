@@ -1,0 +1,5 @@
+.env
+.previous-version
+data/
+backups/
+*.tmp

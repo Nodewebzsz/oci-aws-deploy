@@ -1,0 +1,24 @@
+services:
+  app:
+    image: ghcr.io/nodewebzsz/oci-aws:${OCI_AWS_VERSION:-latest}
+    pull_policy: always
+    container_name: oci-aws
+    restart: unless-stopped
+    user: "${OCI_AWS_RUNTIME_UID:-1001}:${OCI_AWS_RUNTIME_GID:-1001}"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: ${PORT:-18168}
+      LOCAL_AWS_DB_PATH: /app/data/oci-aws.sqlite
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      OCI_AWS_SECRET_KEY: ${OCI_AWS_SECRET_KEY:?OCI_AWS_SECRET_KEY is required}
+    ports:
+      - "${PORT:-18168}:${PORT:-18168}"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const port=process.env.PORT||18168; fetch('http://127.0.0.1:' + port + '/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
