@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-DEPLOY_TOOL_VERSION="deploy-v1.0.0"
+DEPLOY_TOOL_VERSION="deploy-v1.0.1"
 IMAGE_REPOSITORY="ghcr.io/nodewebzsz/oci-aws"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${OCI_AWS_INSTALL_DIR:-/opt/oci-aws}"

@@ -13,10 +13,10 @@
 
 ## 校验后安装
 
-从固定的 `deploy-v1.0.0` Release 下载全部三个资产，并在运行脚本前验证 SHA-256：
+从固定的 `deploy-v1.0.1` Release 下载全部三个资产，并在运行脚本前验证 SHA-256：
 
 ```bash
-version=deploy-v1.0.0
+version=deploy-v1.0.1
 base="https://github.com/Nodewebzsz/oci-aws-deploy/releases/download/$version"
 curl -fLO "$base/oci-aws.sh"
 curl -fLO "$base/compose.yml"
@@ -28,7 +28,7 @@ sudo bash oci-aws.sh install
 等价的一行安装入口如下；它仍会在执行脚本前完成 checksum 校验：
 
 ```bash
-version=deploy-v1.0.0; base="https://github.com/Nodewebzsz/oci-aws-deploy/releases/download/$version"; for asset in oci-aws.sh compose.yml SHA256SUMS; do curl -fLO "$base/$asset" || exit 1; done && sha256sum -c SHA256SUMS && sudo bash oci-aws.sh install
+version=deploy-v1.0.1; base="https://github.com/Nodewebzsz/oci-aws-deploy/releases/download/$version"; for asset in oci-aws.sh compose.yml SHA256SUMS; do curl -fLO "$base/$asset" || exit 1; done && sha256sum -c SHA256SUMS && sudo bash oci-aws.sh install
 ```
 
 默认安装目录是 `/opt/oci-aws`。自定义目录时使用：
@@ -42,7 +42,7 @@ sudo env OCI_AWS_INSTALL_DIR=/srv/oci-aws bash oci-aws.sh install
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
 | `OCI_AWS_INSTALL_DIR` | `/opt/oci-aws` | Shell 工具的安装目录覆盖值，不写入 `.env` |
-| `OCI_AWS_VERSION` | `latest` | 镜像标签，可固定为 `v0.1.0` 或不可变 `sha-*` |
+| `OCI_AWS_VERSION` | `latest` | 镜像标签，可固定为 `v0.1.1` 或不可变 `sha-*` |
 | `PORT` | `18168` | 宿主机和容器监听端口 |
 | `AUTH_COOKIE_SECURE` | `false` | 通过 HTTPS 访问时改为 `true` |
 | `OCI_AWS_RUNTIME_UID/GID` | `1001/1001` | root 安装时的非 root 容器身份；自定义非 root 安装会使用安装者身份 |
@@ -55,7 +55,7 @@ sudo env OCI_AWS_INSTALL_DIR=/srv/oci-aws bash oci-aws.sh install
 ```bash
 sudo /opt/oci-aws/oci-aws.sh status
 sudo /opt/oci-aws/oci-aws.sh version
-sudo /opt/oci-aws/oci-aws.sh update v0.1.0
+sudo /opt/oci-aws/oci-aws.sh update v0.1.1
 sudo /opt/oci-aws/oci-aws.sh backup
 sudo /opt/oci-aws/oci-aws.sh rollback
 sudo /opt/oci-aws/oci-aws.sh logs
@@ -76,7 +76,7 @@ sudo /opt/oci-aws/oci-aws.sh uninstall
 数据库备份和 `.env` 中的 `OCI_AWS_SECRET_KEY` 必须分别安全保存。检查双架构 manifest 和 digest：
 
 ```bash
-docker buildx imagetools inspect ghcr.io/nodewebzsz/oci-aws:v0.1.0
+docker buildx imagetools inspect ghcr.io/nodewebzsz/oci-aws:v0.1.1
 ```
 
 稳定发布提供 `vX.Y.Z`、`X.Y.Z`、`X.Y`、`sha-*` 和 `latest` 标签。审计与回滚应优先使用完整 digest 或 `sha-*`。
