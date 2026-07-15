@@ -1,0 +1,121 @@
+name: Publish unified deployment release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version: { required: true, type: string }
+      digest: { required: true, type: string }
+      revision: { required: true, type: string }
+      notes_b64: { required: true, type: string }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/nodewebzsz/oci-aws
+      VERSION: ${{ inputs.version }}
+      DIGEST: ${{ inputs.digest }}
+      REVISION: ${{ inputs.revision }}
+      NOTES_B64: ${{ inputs.notes_b64 }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: sigstore/cosign-installer@v4.0.0
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]]
+          printf '%s' "$NOTES_B64" | base64 --decode > curated-notes.md
+          test -s curated-notes.md
+      - name: Verify signed immutable image
+        shell: bash
+        run: |
+          ref="${IMAGE}@${DIGEST}"
+          tag_digest="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" | awk '$1 == "Digest:" {print $2; exit}')"
+          test "$tag_digest" = "$DIGEST"
+          docker buildx imagetools inspect --raw "$ref" > image-index.json
+          jq -e '([.manifests[].platform | select(.os == "linux") | (.os + "/" + .architecture)] | index("linux/amd64")) != null' image-index.json
+          jq -e '([.manifests[].platform | select(.os == "linux") | (.os + "/" + .architecture)] | index("linux/arm64")) != null' image-index.json
+          docker pull --platform linux/amd64 "$ref"
+          label="$(docker image inspect "$ref" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+          test "$label" = "$REVISION"
+          identity="https://github.com/Nodewebzsz/oci-aws/.github/workflows/release-image.yml@refs/tags/${VERSION}"
+          cosign verify "$ref" \
+            --certificate-identity="$identity" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+      - name: Build release assets
+        shell: bash
+        run: |
+          mkdir release-assets
+          scripts/build-release.sh "$VERSION" "$DIGEST" "$REVISION" release-assets
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          bundle="release-assets/oci-aws-${VERSION}-deploy.tar.gz"
+          extract="$(mktemp -d)"
+          tar -xzf "$bundle" -C "$extract"
+          bundle_root="oci-aws-$VERSION"
+          test "$(find "$extract" -mindepth 1 -maxdepth 1 -printf '%f\n')" = "$bundle_root"
+          archive_paths="$(find "$extract/$bundle_root" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
+          expected_archive_paths="$(printf '%s\n' .env.example .gitignore LICENSE README.md SHA256SUMS compose.yml oci-aws.sh | LC_ALL=C sort)"
+          test "$archive_paths" = "$expected_archive_paths"
+          (cd "$extract/$bundle_root" && sha256sum -c SHA256SUMS)
+      - name: Build release notes
+        shell: bash
+        run: |
+          # shellcheck disable=SC2016
+          {
+            printf '## AWSLauncher %s\n\n### 更新内容\n' "$VERSION"
+            cat curated-notes.md
+            printf '\n### 镜像\n- Digest: `%s`\n- Platforms: `linux/amd64`, `linux/arm64`\n- Signature: Sigstore Cosign keyless\n' "$DIGEST"
+            printf '\n### 安装\n下载本 Release 的三个资产，执行 `sha256sum -c SHA256SUMS` 后解压安装。\n'
+            printf '\n### 更新\n`sudo /opt/oci-aws/oci-aws.sh update %s`\n' "$VERSION"
+            printf '\n### 验证\n校验值和签名身份记录在 Release 资产中。\n'
+          } > release-notes.md
+      - name: Create draft release
+        shell: bash
+        run: |
+          manifest_asset="release-manifest.json"
+          checksum_asset="SHA256SUMS"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            draft="$(gh release view "$VERSION" --json isDraft --jq .isDraft)"
+            test "$draft" = true || { echo "published release already exists" >&2; exit 1; }
+            existing_assets="$(mktemp -d)"
+            gh release download "$VERSION" --pattern release-manifest.json --dir "$existing_assets"
+            existing_manifest="$existing_assets/release-manifest.json"
+            test "$(jq -r .version "$existing_manifest")" = "$VERSION"
+            test "$(jq -r .image.digest "$existing_manifest")" = "$DIGEST"
+            test "$(jq -r .source.revision "$existing_manifest")" = "$REVISION"
+            gh release delete "$VERSION" --yes --cleanup-tag
+          elif git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "conflicting public tag already exists" >&2
+            exit 1
+          fi
+          gh release create "$VERSION" \
+            "release-assets/oci-aws-${VERSION}-deploy.tar.gz" \
+            "release-assets/$manifest_asset" \
+            "release-assets/$checksum_asset" \
+            --target "$GITHUB_SHA" --title "AWSLauncher $VERSION" \
+            --notes-file release-notes.md --draft
+      - name: Verify uploaded assets
+        shell: bash
+        run: |
+          download="$(mktemp -d)"
+          gh release download "$VERSION" --dir "$download"
+          actual="$(find "$download" -mindepth 1 -maxdepth 1 -type f -exec basename {} \; | sort)"
+          expected="$(printf '%s\n' SHA256SUMS "oci-aws-${VERSION}-deploy.tar.gz" release-manifest.json | sort)"
+          test "$actual" = "$expected"
+          (cd "$download" && sha256sum -c SHA256SUMS)
+          test "$(jq -r .version "$download/release-manifest.json")" = "$VERSION"
+          test "$(jq -r .image.digest "$download/release-manifest.json")" = "$DIGEST"
+      - name: Publish verified release
+        run: gh release edit "$VERSION" --draft=false
