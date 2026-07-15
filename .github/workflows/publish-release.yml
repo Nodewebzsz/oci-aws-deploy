@@ -42,9 +42,11 @@ jobs:
         shell: bash
         run: |
           ref="${IMAGE}@${DIGEST}"
-          tag_digest="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" | awk '$1 == "Digest:" {print $2; exit}')"
-          test "$tag_digest" = "$DIGEST"
-          docker buildx imagetools inspect --raw "$ref" > image-index.json
+          echo "Verifying image tag ${IMAGE}:${VERSION}"
+          docker manifest inspect "${IMAGE}:${VERSION}" > image-tag.json
+          echo "Verifying image digest $ref"
+          docker manifest inspect "$ref" > image-index.json
+          diff -u <(jq -S . image-index.json) <(jq -S . image-tag.json)
           jq -e '([.manifests[].platform | select(.os == "linux") | (.os + "/" + .architecture)] | index("linux/amd64")) != null' image-index.json
           jq -e '([.manifests[].platform | select(.os == "linux") | (.os + "/" + .architecture)] | index("linux/arm64")) != null' image-index.json
           docker pull --platform linux/amd64 "$ref"
