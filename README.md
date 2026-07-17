@@ -176,28 +176,29 @@ sudo /opt/oci-aws/oci-aws.sh rollback
 
 ## 手动 Compose 部署
 
-如果你不想安装管理脚本，也可以只使用 Release 包中的 Compose 文件：
+如果你不想安装管理脚本，也可以直接使用公开仓库中的单容器 Compose 文件：
 
 ```bash
-version=v0.2.1
-base="https://github.com/Nodewebzsz/oci-aws-deploy/releases/download/$version"
-bundle="oci-aws-${version}-deploy.tar.gz"
+curl -fLO https://raw.githubusercontent.com/Nodewebzsz/oci-aws-deploy/main/compose.yml
 
-curl -fLO "$base/$bundle"
-curl -fLO "$base/SHA256SUMS"
-sha256sum -c SHA256SUMS
-tar -xzf "$bundle"
-cd "oci-aws-$version"
-cp .env.example .env
-```
+mkdir -p data
+OCI_AWS_SECRET_KEY=$(openssl rand -hex 32)
+cat > .env <<EOF
+OCI_AWS_VERSION=v0.2.2
+PORT=18168
+AUTH_COOKIE_SECURE=false
+OCI_AWS_SECRET_KEY=$OCI_AWS_SECRET_KEY
+EOF
+chmod 600 .env
 
-编辑 `.env` 后启动：
-
-```bash
 docker compose up -d
 docker compose ps
 docker compose logs -f
 ```
+
+`latest` 是最新稳定版的移动标签。比如当前 `v0.2.2` 稳定发布成功后，`latest` 会指向这次稳定镜像；但以后发布
+`v0.2.3` 时，`latest` 又会移动。生产环境建议把 `OCI_AWS_VERSION` 固定为具体版本号或不可变 `sha-*`，
+这样重启和迁移时不会意外升级。只有明确想持续跟随最新稳定版时，才把它写成 `latest`。
 
 手动部署需要你自己负责 `.env` 权限、数据库备份、升级、回滚和健康检查。长期使用建议改用 `oci-aws.sh install`。
 
